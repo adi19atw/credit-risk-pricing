@@ -15,6 +15,20 @@ import sys
 import os
 from datetime import datetime
 
+# ========== RELATIVE PATHS (FIXED) ==========
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Define relative paths for all files
+MODEL_PATH = os.path.join(BASE_DIR, '..', 'data', 'model_artifacts', 'xgboost_model.pkl')
+SCALER_PATH = os.path.join(BASE_DIR, '..', 'data', 'model_artifacts', 'feature_scaler.pkl')
+PORTFOLIO_DATA_PATH = os.path.join(BASE_DIR, '..', 'data', 'processed', 'final_pricing_recommendations.csv')
+
+# Debug: Print paths (remove after testing)
+# st.write(f"Base directory: {BASE_DIR}")
+# st.write(f"Model path: {MODEL_PATH}")
+# st.write(f"Model exists: {os.path.exists(MODEL_PATH)}")
+
 # Page configuration
 st.set_page_config(
     page_title="Credit Risk Pricing System",
@@ -85,27 +99,102 @@ st.sidebar.info("""
 **Last Updated:** Oct 2025
 """)
 
-# Load models with caching
+# ========== LOAD MODELS WITH RELATIVE PATHS ==========
 @st.cache_resource
 def load_models():
-    """Load trained models"""
+    """Load trained models with error handling"""
     try:
-        pd_model = joblib.load(r'C:\Users\Asus\credit-risk-pricing\data\model_artifacts\xgboost_model.pkl')
-        scaler = joblib.load(r'C:\Users\Asus\credit-risk-pricing\data\model_artifacts\feature_scaler.pkl')
+        # Check if files exist
+        if not os.path.exists(MODEL_PATH):
+            st.error(f"❌ Model file not found: {MODEL_PATH}")
+            return None, None, False
+        
+        if not os.path.exists(SCALER_PATH):
+            st.error(f"❌ Scaler file not found: {SCALER_PATH}")
+            return None, None, False
+        
+        # Load models
+        pd_model = joblib.load(MODEL_PATH)
+        scaler = joblib.load(SCALER_PATH)
+        
         return pd_model, scaler, True
+    
     except Exception as e:
         st.error(f"⚠️ Error loading models: {str(e)}")
         return None, None, False
 
 @st.cache_data
 def load_portfolio():
-    """Load portfolio data"""
+    """Load portfolio data with error handling"""
     try:
-        data = pd.read_csv(r'C:\Users\Asus\credit-risk-pricing\data\processed\final_pricing_recommendations.csv')
+        # Check if file exists
+        if not os.path.exists(PORTFOLIO_DATA_PATH):
+            st.warning(f"⚠️ Portfolio data not found: {PORTFOLIO_DATA_PATH}")
+            # Return mock data for demo
+            return create_demo_portfolio()
+        
+        # Load data
+        data = pd.read_csv(PORTFOLIO_DATA_PATH)
         return data
+    
     except Exception as e:
-        st.warning(f"Portfolio data not available: {str(e)}")
-        return None
+        st.warning(f"⚠️ Error loading portfolio: {str(e)}")
+        # Return mock data for demo
+        return create_demo_portfolio()
+
+def create_demo_portfolio():
+    """Create demo portfolio data for testing"""
+    np.random.seed(42)
+    n_records = 500
+    
+    pd_values = np.random.beta(2, 5, n_records)  # Default probability
+    lgd_values = np.random.uniform(0.35, 0.55, n_records)  # Loss given default
+    ead_values = np.random.lognormal(9.5, 0.8, n_records)  # Exposure at default
+    
+    # Segment based on PD
+    def get_segment(pd):
+        if pd < 0.05:
+            return 'Prime'
+        elif pd < 0.10:
+            return 'Near-Prime'
+        elif pd < 0.20:
+            return 'Standard'
+        elif pd < 0.40:
+            return 'Subprime'
+        else:
+            return 'High-Risk'
+    
+    segments = [get_segment(pd) for pd in pd_values]
+    
+    # Interest rates by segment
+    segment_rates = {
+        'Prime': 8.5,
+        'Near-Prime': 12.5,
+        'Standard': 18.0,
+        'Subprime': 28.0,
+        'High-Risk': 36.0
+    }
+    
+    interest_rates = [segment_rates[seg] + np.random.normal(0, 1) for seg in segments]
+    
+    # Expected loss
+    expected_losses = pd_values * lgd_values * ead_values
+    
+    # Decision
+    decisions = ['APPROVE' if pd < 0.50 else 'DECLINED' for pd in pd_values]
+    
+    df = pd.DataFrame({
+        'PD': pd_values,
+        'LGD': lgd_values,
+        'EAD': ead_values,
+        'Expected_Loss': expected_losses,
+        'Interest_Rate_Pct': interest_rates,
+        'Risk_Segment': segments,
+        'decision': decisions
+    })
+    
+    st.info("ℹ️ Using demo portfolio data (actual data file not found)")
+    return df
 
 # Load resources
 pd_model, scaler, models_loaded = load_models()
@@ -258,7 +347,7 @@ if page == "🏠 Dashboard Home":
         }), use_container_width=True)
     
     else:
-        st.warning("📊 Portfolio data not available. Please ensure models are trained and data is processed.")
+        st.warning("📊 Portfolio data not available. Please ensure data files are present.")
 
 # ============================================================================
 # PAGE 2: LOAN ASSESSMENT
@@ -270,8 +359,7 @@ elif page == "📝 Loan Assessment":
     st.markdown("Enter applicant details to receive instant risk analysis and pricing recommendation")
     
     if not models_loaded:
-        st.error("⚠️ Models not loaded. Cannot perform assessment.")
-        st.stop()
+        st.warning("⚠️ Models not loaded. Using demo mode for assessment.")
     
     # Input form
     with st.form("loan_application_form"):
@@ -847,7 +935,7 @@ elif page == "ℹ️ About System":
     **Aditya Sinha**  
     Data Analyst | Machine Learning Engineer
     
-    📧 Contact: aditya.sinha@example.com  
+    📧 Contact: [aditya.sinha@example.com](mailto:aditya.sinha@example.com)  
     💼 LinkedIn: [linkedin.com/in/adityasinha](https://linkedin.com)  
     🐙 GitHub: [github.com/adityasinha](https://github.com)
     
